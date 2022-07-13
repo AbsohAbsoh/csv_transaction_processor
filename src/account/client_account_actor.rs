@@ -1,37 +1,41 @@
 use std::collections::HashMap;
 
+use csv::StringRecord;
 use tokio::{
-    sync::{mpsc, oneshot},
+    sync::mpsc,
     task,
 };
 
+use crate::csv_io::{create_client_output_csv};
+
 use super::{
     client_account::{ClientAccount, ClientID},
-    transaction::{Transaction, TransactionDTO, TransactionError},
+    transaction::{Transaction},
 };
 
 pub struct AccountActor {
     accounts: HashMap<ClientID, ClientAccount>,
-    listener: mpsc::Receiver<TransactionDTO>,
 }
 
 impl AccountActor {
-    pub fn spawn(receiver_buffer_size: usize) -> mpsc::Sender<TransactionDTO> {
-        let (sender, receiver) = mpsc::channel(receiver_buffer_size);
+    pub fn spawn(receiver_buffer_size: usize) -> mpsc::Sender<TransactionCommand> {
+        let (sender, mut receiver) = mpsc::channel(receiver_buffer_size);
         let mut actor = AccountActor {
             accounts: HashMap::new(),
-            listener: receiver,
         };
         task::spawn(async move {
-            while let Some(transaction_dto) = actor.listener.recv().await {
+            while let Some(transaction_dto) = receiver.recv().await {
                 match transaction_dto {
-                    TransactionDTO::ProcessTransaction(transaction, cb) => {
-                        let result = actor.process_transaction(transaction);
-                        let _ = cb.send(result);
+                    TransactionCommand::ProcessTransaction(transaction) => {
+                        if let Err(_) = actor.process_transaction(transaction) {
+                            // Handle error
+                        }
                     }
-                    TransactionDTO::GetAllClients(cb) => {
+                    TransactionCommand::WriteClientsToStdout => {
+                        let mut writer = create_client_output_csv();
                         for (_, account) in &actor.accounts {
-                            let _ = cb.send(account.into()).await;
+                            let record: StringRecord = account.into();
+                            let _ = writer.write_record(&record);
                         }
                     }
                 }
@@ -40,7 +44,6 @@ impl AccountActor {
         sender
     }
 
-    /// Assuming processing order is important and that process_transaction should NOT be parallelizable
     fn process_transaction(&mut self, transaction: Transaction) -> Result<(), TransactionError> {
         let client_id = transaction.client_id.clone();
         let account = self.get_or_create_account(&client_id);
@@ -54,4 +57,25 @@ impl AccountActor {
         }
         self.accounts.get_mut(client_id).unwrap()
     }
+}
+
+#[derive(Debug)]
+pub enum TransactionCommand {
+    ProcessTransaction(Transaction),
+    /// Okay.. in a real system the ClientAccountActor would not be responsible for writing to Stdout
+    /// ClientAccounts would probably be in some sort of readable record state/cache
+    WriteClientsToStdout,
+}
+
+
+#[derive(Debug, Clone)]
+pub enum TransactionError {
+    AccountLocked,
+    InsufficientFundsForWithdrawal,
+    MissingDepositAmount,
+    ChargebackWasNotDisputed,
+    ChargebackTransactionNotFound,
+    DisputedTransactionNotFound,
+    ResolvedTransactionNotFound,
+    ResolvedTransactionNotDisputed,
 }

@@ -3,37 +3,26 @@ use std::collections::HashMap;
 use csv::StringRecord;
 
 use crate::account::transaction::{
-    Transaction, TransactionError, TransactionID, TransactionStatus, TransactionType,
+    Transaction, TransactionID, TransactionStatus, TransactionType,
 };
+
+use super::TransactionError;
 
 pub type ClientID = u32;
 
-pub struct ClientAccountDTO {
-    pub client_id: ClientID,
-    pub available: f32,
-    pub held: f32,
-    pub total: f32,
-    pub locked: bool,
-}
-
-impl From<&ClientAccount> for ClientAccountDTO {
-    fn from(account: &ClientAccount) -> Self {
-        ClientAccountDTO {
-            client_id: account.client_id,
-            available: account.available,
-            held: account.held,
-            total: account.total,
-            locked: account.locked,
-        }
-    }
-}
-
-impl Into<StringRecord> for ClientAccountDTO {
+impl Into<StringRecord> for &ClientAccount {
     fn into(self) -> StringRecord {
-        todo!()
+        let mut record = StringRecord::new();
+        record.push_field(&self.client_id.to_string());
+        record.push_field(&format!("{:.4}", &self.available));
+        record.push_field(&format!("{:.4}", &self.held));
+        record.push_field(&format!("{:.4}", &self.total));
+        record.push_field(&self.locked.to_string());
+        record
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ClientAccount {
     client_id: ClientID,
     available: f32,
@@ -55,8 +44,6 @@ impl ClientAccount {
         }
     }
 
-    // TODO ENSURE TRANSACTIONS ARE APPLIED WITH EXACTLY FOUR LEVELS OF DECIMAL PRECISION
-    // TODO consider using a linked list or some other DS as a way to deal with transaction application?
     pub fn apply_transaction(&mut self, transaction: Transaction) -> Result<(), TransactionError> {
         if self.locked {
             return Err(TransactionError::AccountLocked);
@@ -75,8 +62,9 @@ impl ClientAccount {
 
     fn deposit(&mut self, transaction: &Transaction) -> Result<(), TransactionError> {
         if let Some(amount) = transaction.amount {
-            self.total = self.total + amount;
-            self.available = self.available + amount;
+            let amount_with_precision = format!("{:.4}", amount).parse::<f32>().unwrap();
+            self.total = self.total + amount_with_precision;
+            self.available = self.available + amount_with_precision;
             Ok(())
         } else {
             Err(TransactionError::MissingDepositAmount)
@@ -84,11 +72,12 @@ impl ClientAccount {
     }
 
     fn withdrawal(&mut self, amount: &f32) -> Result<(), TransactionError> {
-        if self.available.lt(amount) {
+        let amount_with_precision = format!("{:.4}", amount).parse::<f32>().unwrap();
+        if self.available.lt(&amount_with_precision) {
             Err(TransactionError::InsufficientFundsForWithdrawal)
         } else {
-            self.total -= amount;
-            self.available -= amount;
+            self.total -= amount_with_precision;
+            self.available -= amount_with_precision;
             Ok(())
         }
     }
