@@ -1,6 +1,9 @@
+/// We could probably have just thrown serde on everything here
+/// However manual deserialization gives us a bit more fidelity on validation
+/// It also decouples the struct from the validation logic, which isn't nearly as clean w/ deserialize macro
 use csv::{StringRecord};
 
-use super::TransactionError;
+use super::{TransactionError, client_account::ClientID};
 
 #[derive(Debug, Clone)]
 pub enum TransactionType {
@@ -11,13 +14,12 @@ pub enum TransactionType {
     Chargeback,
 }
 
-
 pub type TransactionID = u32;
 
 #[derive(Debug, Clone)]
 pub struct Transaction {
     pub transaction_type: TransactionType,
-    pub client_id: u32,
+    pub client_id: ClientID,
     pub tx_id: TransactionID,
     pub amount: Option<f32>,
     pub status: TransactionStatus,
@@ -32,6 +34,7 @@ pub enum TransactionStatus {
     Error(TransactionError),
 }
 
+#[derive(Debug)]
 pub enum TransactionValidationError {
     MissingTransactionType,
     MissingAmountForWithdrawal,
@@ -39,7 +42,7 @@ pub enum TransactionValidationError {
     MissingClientID,
     MissingTransactionID,
     InvalidTransactionType,
-    InvalidAmount,
+    InvalidAmountFormat,
     InvalidIDFormat
 }
 
@@ -51,10 +54,11 @@ impl TryFrom<StringRecord> for Transaction {
         let client_id = parse_and_validate_id(&record, 1)?;
         let tx_id = parse_and_validate_id(&record, 2)?;
         let amount = parse_and_validate_amount(&record, &transaction_type)?;
+        debug!("{:?}, {:?}, {:?}, {:?}", transaction_type, client_id, tx_id, amount);
         Ok(Transaction {
             transaction_type,
-            client_id,
-            tx_id,
+            client_id: client_id as ClientID,
+            tx_id: tx_id as u32,
             amount,
             status: TransactionStatus::NotYetCommitted,
         })
@@ -78,23 +82,22 @@ fn parse_and_validate_transaction_type(record: &StringRecord) -> Result<Transact
 fn parse_and_validate_amount(record: &StringRecord, transaction_type: &TransactionType) -> Result<Option<f32>, TransactionValidationError> {
     if let Some(amnt) = record.get(3) {
         if let Ok(parsed_amount) = format!("{:.4}",amnt.trim()).parse::<f32>() {
-            Ok(Some(parsed_amount))
+            return Ok(Some(parsed_amount))
         } else {
-            Err(TransactionValidationError::InvalidAmount)
+            return Err(TransactionValidationError::InvalidAmountFormat)
         }
-    } else {
-        match transaction_type {
-            TransactionType::Deposit => Err(TransactionValidationError::MissingAmountForDeposit),
-            TransactionType::Withdrawal => Err(TransactionValidationError::MissingAmountForWithdrawal),
-            _ => Ok(None)
-        }    
+    }
+    match transaction_type {
+        TransactionType::Deposit => Err(TransactionValidationError::MissingAmountForDeposit),
+        TransactionType::Withdrawal => Err(TransactionValidationError::MissingAmountForWithdrawal),
+        _ => Ok(None)
     }
 }
 
-fn parse_and_validate_id(record: &StringRecord, record_index: usize) -> Result<u32, TransactionValidationError> {
+fn parse_and_validate_id(record: &StringRecord, record_index: usize) -> Result<usize, TransactionValidationError> {
     if let Some(id_str) = record.get(record_index) {
-        if let Ok(id) = id_str.trim().parse::<u32>()  {
-            Ok(id)   
+        if let Ok(id) = id_str.trim().parse::<ClientID>()  {
+            Ok(id as usize)   
         } else {
             Err(TransactionValidationError::InvalidIDFormat)
         }

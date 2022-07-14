@@ -27,8 +27,8 @@ impl AccountActor {
             while let Some(transaction_dto) = receiver.recv().await {
                 match transaction_dto {
                     TransactionCommand::ProcessTransaction(transaction) => {
-                        if let Err(_) = actor.process_transaction(transaction) {
-                            // Handle error
+                        if let Err(transaction_process_error) = actor.process_transaction(transaction) {
+                            debug!("Transaction process error: {:?}", transaction_process_error);
                         }
                     }
                     TransactionCommand::WriteClientsToStdout => {
@@ -63,7 +63,7 @@ impl AccountActor {
 pub enum TransactionCommand {
     ProcessTransaction(Transaction),
     /// Okay.. in a real system the ClientAccountActor would not be responsible for writing to Stdout
-    /// ClientAccounts would probably be in some sort of readable record state/cache
+    /// But ClientAccounts would probably be in some sort of readable record state/cache
     WriteClientsToStdout,
 }
 

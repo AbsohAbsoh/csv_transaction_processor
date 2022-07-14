@@ -8,7 +8,7 @@ use crate::account::transaction::{
 
 use super::TransactionError;
 
-pub type ClientID = u32;
+pub type ClientID = u16;
 
 impl Into<StringRecord> for &ClientAccount {
     fn into(self) -> StringRecord {
@@ -49,35 +49,41 @@ impl ClientAccount {
             return Err(TransactionError::AccountLocked);
         }
         let result = match transaction.transaction_type {
-            TransactionType::Deposit => self.deposit(&transaction),
-            TransactionType::Withdrawal => self.withdrawal(&transaction.amount.unwrap()),
+            TransactionType::Deposit => self.deposit(transaction),
+            TransactionType::Withdrawal => self.withdrawal(transaction),
             TransactionType::Dispute => self.dispute(&transaction.tx_id),
             TransactionType::Resolve => self.resolve(&transaction.tx_id),
             TransactionType::Chargeback => self.chargeback(&transaction.tx_id),
         };
-        self.transactions
-            .insert(transaction.tx_id.clone(), transaction);
+        // TODO we cant use the transaction id here, since for disputed/resolved transactions it is just referencing the prior transactions
+        // TODO however we can simply update their statuses
+        // TODO these trasaction inserts should probably happen on the individual deposit/withdrawl/dispute/resolve functions since they're unique to them
         result
     }
 
-    fn deposit(&mut self, transaction: &Transaction) -> Result<(), TransactionError> {
+    fn deposit(&mut self, mut transaction: Transaction) -> Result<(), TransactionError> {
         if let Some(amount) = transaction.amount {
             let amount_with_precision = format!("{:.4}", amount).parse::<f32>().unwrap();
             self.total = self.total + amount_with_precision;
             self.available = self.available + amount_with_precision;
+            transaction.status = TransactionStatus::Committed;
+            self.transactions.insert(transaction.tx_id.clone(), transaction);
             Ok(())
         } else {
             Err(TransactionError::MissingDepositAmount)
         }
     }
 
-    fn withdrawal(&mut self, amount: &f32) -> Result<(), TransactionError> {
-        let amount_with_precision = format!("{:.4}", amount).parse::<f32>().unwrap();
+    // TODO handle amount unwrap
+    fn withdrawal(&mut self, mut transaction: Transaction) -> Result<(), TransactionError> {
+        let amount_with_precision = format!("{:.4}", transaction.amount.unwrap().clone()).parse::<f32>().unwrap();
         if self.available.lt(&amount_with_precision) {
             Err(TransactionError::InsufficientFundsForWithdrawal)
         } else {
             self.total -= amount_with_precision;
             self.available -= amount_with_precision;
+            transaction.status = TransactionStatus::Committed;
+            self.transactions.insert(transaction.tx_id.clone(), transaction);
             Ok(())
         }
     }
@@ -93,12 +99,13 @@ impl ClientAccount {
             }
             Ok(())
         } else {
-            Err(TransactionError::ResolvedTransactionNotDisputed)
+            Err(TransactionError::DisputedTransactionNotFound)
         }
     }
 
     fn resolve(&mut self, transaction_id: &TransactionID) -> Result<(), TransactionError> {
         if let Some(transaction) = self.transactions.get_mut(transaction_id) {
+            debug!("{:?}", transaction.status);
             if let TransactionStatus::Disputed = transaction.status {
                 transaction.status = TransactionStatus::Committed;
                 if let Some(amount) = transaction.amount {
