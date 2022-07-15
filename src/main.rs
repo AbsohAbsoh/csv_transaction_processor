@@ -5,13 +5,10 @@ mod account;
 mod csv_io;
 
 use core::panic;
-use std::process::exit;
 
-use csv::StringRecord;
 use csv_io::validate_headers;
 use tokio::runtime::Runtime;
 use tokio_stream::{self, StreamExt};
-
 use pretty_env_logger::env_logger::Target;
 
 use account::{AccountActor, TransactionCommand};

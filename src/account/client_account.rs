@@ -48,17 +48,13 @@ impl ClientAccount {
         if self.locked {
             return Err(TransactionError::AccountLocked);
         }
-        let result = match transaction.transaction_type {
+        match transaction.transaction_type {
             TransactionType::Deposit => self.deposit(transaction),
             TransactionType::Withdrawal => self.withdrawal(transaction),
             TransactionType::Dispute => self.dispute(&transaction.tx_id),
             TransactionType::Resolve => self.resolve(&transaction.tx_id),
             TransactionType::Chargeback => self.chargeback(&transaction.tx_id),
-        };
-        // TODO we cant use the transaction id here, since for disputed/resolved transactions it is just referencing the prior transactions
-        // TODO however we can simply update their statuses
-        // TODO these trasaction inserts should probably happen on the individual deposit/withdrawl/dispute/resolve functions since they're unique to them
-        result
+        }
     }
 
     fn deposit(&mut self, mut transaction: Transaction) -> Result<(), TransactionError> {
@@ -74,22 +70,23 @@ impl ClientAccount {
         }
     }
 
-    // TODO handle amount unwrap
     fn withdrawal(&mut self, mut transaction: Transaction) -> Result<(), TransactionError> {
-        let amount_with_precision = format!("{:.4}", transaction.amount.unwrap().clone()).parse::<f32>().unwrap();
-        if self.available.lt(&amount_with_precision) {
-            Err(TransactionError::InsufficientFundsForWithdrawal)
+        if let Some(transaction_amount) = transaction.amount {
+            let amount_with_precision = format!("{:.4}", transaction_amount.clone()).parse::<f32>().unwrap();
+            if self.available.lt(&amount_with_precision) {
+                Err(TransactionError::InsufficientFundsForWithdrawal)
+            } else {
+                self.total -= amount_with_precision;
+                self.available -= amount_with_precision;
+                transaction.status = TransactionStatus::Committed;
+                self.transactions.insert(transaction.tx_id.clone(), transaction);
+                Ok(())
+            }
         } else {
-            self.total -= amount_with_precision;
-            self.available -= amount_with_precision;
-            transaction.status = TransactionStatus::Committed;
-            self.transactions.insert(transaction.tx_id.clone(), transaction);
-            Ok(())
+            Err(TransactionError::MissingWithdrawalAmount)
         }
     }
 
-    // TODO handle transaction id not found
-    // TODO handle if dispute would make balance negative
     fn dispute(&mut self, transaction_id: &TransactionID) -> Result<(), TransactionError> {
         if let Some(transaction) = self.transactions.get_mut(transaction_id) {
             transaction.status = TransactionStatus::Disputed;
@@ -105,7 +102,6 @@ impl ClientAccount {
 
     fn resolve(&mut self, transaction_id: &TransactionID) -> Result<(), TransactionError> {
         if let Some(transaction) = self.transactions.get_mut(transaction_id) {
-            debug!("{:?}", transaction.status);
             if let TransactionStatus::Disputed = transaction.status {
                 transaction.status = TransactionStatus::Committed;
                 if let Some(amount) = transaction.amount {

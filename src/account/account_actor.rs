@@ -1,12 +1,9 @@
 use std::collections::HashMap;
 
 use csv::StringRecord;
-use tokio::{
-    sync::mpsc,
-    task,
-};
+use tokio::{sync::mpsc, task};
 
-use crate::csv_io::{create_client_output_csv};
+use crate::csv_io::create_client_output_csv;
 
 use super::{
     client_account::{ClientAccount, ClientID},
@@ -62,8 +59,7 @@ impl AccountActor {
 #[derive(Debug)]
 pub enum TransactionCommand {
     ProcessTransaction(Transaction),
-    /// Okay.. in a real system the ClientAccountActor would not be responsible for writing to Stdout
-    /// But ClientAccounts would probably be in some sort of readable record state/cache
+    /// Okay.. in a real system the ClientAccountActor would probably not be responsible for writing to Stdout
     WriteClientsToStdout,
 }
 
@@ -73,6 +69,7 @@ pub enum TransactionError {
     AccountLocked,
     InsufficientFundsForWithdrawal,
     MissingDepositAmount,
+    MissingWithdrawalAmount,
     ChargebackWasNotDisputed,
     ChargebackTransactionNotFound,
     DisputedTransactionNotFound,

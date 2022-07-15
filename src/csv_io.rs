@@ -68,4 +68,3 @@ static LOCKED_HEADER: &str = "locked";
 static TX_HEADER: &str = "tx";
 static TYPE_HEADER: &str = "type";
 static AMOUNT_HEADER: &str = "amount";
-
