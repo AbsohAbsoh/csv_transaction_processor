@@ -1,14 +1,15 @@
-- Why does it sometimes not write the CSV?
-
-## Tests
+### Tests
 - improperly formatted header row 
-- with improperly formatted child rows, partially, all, none
-- empty records
+- with improperly formatted child rows (partially, all, none)
+- no records
 - big record (like 10,000) 
 - records which would withdrawal negative amounts 
 - lots of holds / locks 
 - rows with wrong data types
-- make sure that records are processed in order and stream doesn't mess it up
+- ensure stream doesn't re-order records
 - chargeback on account which isn't disputed
 - resolve on transaction which isn't disputed
+- deposit/withdrawal on locked account
 - if input file isn't found
+- data wrapped in single/double quotes
+- data w/ whitespaces

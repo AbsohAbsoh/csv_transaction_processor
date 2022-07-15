@@ -54,7 +54,7 @@ impl TryFrom<StringRecord> for Transaction {
         let client_id = parse_and_validate_id(&record, 1)?;
         let tx_id = parse_and_validate_id(&record, 2)?;
         let amount = parse_and_validate_amount(&record, &transaction_type)?;
-        debug!("{:?}, {:?}, {:?}, {:?}", transaction_type, client_id, tx_id, amount);
+        // debug!("{:?}, {:?}, {:?}, {:?}", transaction_type, client_id, tx_id, amount);
         Ok(Transaction {
             transaction_type,
             client_id: client_id as ClientID,
@@ -67,7 +67,12 @@ impl TryFrom<StringRecord> for Transaction {
 
 fn parse_and_validate_transaction_type(record: &StringRecord) -> Result<TransactionType, TransactionValidationError> {
     if let Some(parsed_transaction_type) = record.get(0) {
-        return match parsed_transaction_type.trim().to_lowercase().as_str() {
+        return match parsed_transaction_type.replace(r#"""#, "")
+            .replace(r#"'"#, "")
+            .trim()
+            .to_lowercase()
+            .as_str() 
+        {
             "deposit" => Ok(TransactionType::Deposit),
             "withdrawal" => Ok(TransactionType::Withdrawal),
             "dispute" => Ok(TransactionType::Dispute),
@@ -81,7 +86,8 @@ fn parse_and_validate_transaction_type(record: &StringRecord) -> Result<Transact
 
 fn parse_and_validate_amount(record: &StringRecord, transaction_type: &TransactionType) -> Result<Option<f32>, TransactionValidationError> {
     if let Some(amnt) = record.get(3) {
-        if let Ok(parsed_amount) = format!("{:.4}",amnt.trim()).parse::<f32>() {
+        let parsed_amount_result = format!("{:.4}",amnt.replace(r#"""#, "").replace(r#"'"#, "").trim()).parse::<f32>();
+        if let Ok(parsed_amount) = parsed_amount_result {
             return Ok(Some(parsed_amount))
         } else {
             return Err(TransactionValidationError::InvalidAmountFormat)
@@ -96,7 +102,12 @@ fn parse_and_validate_amount(record: &StringRecord, transaction_type: &Transacti
 
 fn parse_and_validate_id(record: &StringRecord, record_index: usize) -> Result<usize, TransactionValidationError> {
     if let Some(id_str) = record.get(record_index) {
-        if let Ok(id) = id_str.trim().parse::<ClientID>()  {
+        let trimmed_id_result = id_str.trim()
+            .replace(r#"""#, "")
+            .replace(r#"'"#, "")
+            .trim()
+            .parse::<ClientID>();
+        if let Ok(id) = trimmed_id_result  {
             Ok(id as usize)   
         } else {
             Err(TransactionValidationError::InvalidIDFormat)
